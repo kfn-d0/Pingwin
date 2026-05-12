@@ -1,6 +1,11 @@
 # Pingwin
 
-<img width="614" height="652" alt="image" src="https://github.com/user-attachments/assets/fe455a31-e842-48e8-adee-4df062d27655" /> <img width="374" height="431" alt="image" src="https://github.com/user-attachments/assets/98b1a0f6-6fd8-40e8-b2df-46a05d4e30a7" />
+<img width="614" height="652" alt="image" src="https://github.com/user-attachments/assets/fe455a31-e842-48e8-adee-4df062d27655" /> 
+
+[![C++20](https://img.shields.io/badge/Language-C%2B%2B20-blue.svg)](https://en.cppreference.com/w/cpp/20)
+[![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)](https://www.microsoft.com/windows)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Build Status](https://img.shields.io/badge/Build-Stable-brightgreen.svg)]()
 
 Pingwin é um utilitário leve desenvolvido em C++ para monitoramento de rede em tempo real diretamente da bandeja do sistema (System Tray). Ideal para gamers, SOC, NOC, administradores de rede e usuários que precisam de diagnóstico constante de latência sem janelas intrusivas.
 
@@ -15,6 +20,13 @@ Pingwin é um utilitário leve desenvolvido em C++ para monitoramento de rede em
   - **Traceroute Automático**: Disparado ao detectar alta latência persistente.
   - **Informações de Interface**: Acesso rápido a IP Local, Gateway, DNS e Endereço MAC.
 - **Janelas Flutuantes**: Monitore múltiplos alvos simultaneamente com janelas compactas e translúcidas.
+
+## Cenários de Uso
+
+- **Jogos Online**: Validação de estabilidade de rota para servidores de jogos antes e durante sessões.
+- **Teletrabalho (Home Office)**: Diagnóstico de qualidade em chamadas VoIP e videoconferências via análise de Jitter.
+- **Administração de Sistemas**: Validação rápida de conectividade de serviços e disponibilidade de portas em servidores.
+- **NOC**: Provedores para analise interna de rotas em seu backbone.
 
 ## Tecnologias
 
