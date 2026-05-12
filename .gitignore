@@ -1,0 +1,7 @@
+*.o
+*.exe
+.vscode/
+.idea/
+*.log
+*.bak
+convert_icon.py
