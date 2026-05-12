@@ -2,9 +2,7 @@
 
 **A taskbar latency monitor for Windows.**
 
-Pingwin é um utilitário leve e profissional desenvolvido em C++ para monitoramento de rede em tempo real diretamente da bandeja do sistema (System Tray). Ideal para gamers, administradores de rede e usuários que precisam de diagnóstico constante de latência sem janelas intrusivas.
-
-![Pingwin Icon](icon.png)
+Pingwin é um utilitário leve desenvolvido em C++ para monitoramento de rede em tempo real diretamente da bandeja do sistema (System Tray). Ideal para gamers, administradores de rede e usuários que precisam de diagnóstico constante de latência sem janelas intrusivas.
 
 ## Funcionalidades
 
