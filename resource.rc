@@ -17,7 +17,7 @@ BEGIN
         BLOCK "040904B0"
         BEGIN
             VALUE "CompanyName",      "KFN-d0 Project"
-            VALUE "FileDescription",  "Pingwin - Taskbar latency monitor"
+            VALUE "FileDescription",  "Pingwin"
             VALUE "FileVersion",      "1.0.0.0"
             VALUE "InternalName",     "Pingwin"
             VALUE "LegalCopyright",   "2026 KFN-d0
