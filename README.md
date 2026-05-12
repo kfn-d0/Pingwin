@@ -1,5 +1,8 @@
 # Pingwin
 
+<img width="614" height="652" alt="image" src="https://github.com/user-attachments/assets/fe455a31-e842-48e8-adee-4df062d27655" /> <img width="374" height="431" alt="image" src="https://github.com/user-attachments/assets/98b1a0f6-6fd8-40e8-b2df-46a05d4e30a7" />
+
+
 **A taskbar latency monitor for Windows.**
 
 Pingwin é um utilitário leve desenvolvido em C++ para monitoramento de rede em tempo real diretamente da bandeja do sistema (System Tray). Ideal para gamers, administradores de rede e usuários que precisam de diagnóstico constante de latência sem janelas intrusivas.
