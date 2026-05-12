@@ -20,7 +20,7 @@ BEGIN
             VALUE "FileDescription",  "Pingwin"
             VALUE "FileVersion",      "1.0.0.0"
             VALUE "InternalName",     "Pingwin"
-            VALUE "LegalCopyright",   "2026 KFN-d0
+            VALUE "LegalCopyright",   "2026 KFN-d0"
             VALUE "OriginalFilename", "Pingwin.exe"
             VALUE "ProductName",      "Pingwin"
             VALUE "ProductVersion",   "1.0.0.0"
