@@ -1,6 +1,6 @@
 # Pingwin
 
-<img width="614" height="652" alt="image" src="https://github.com/user-attachments/assets/fe455a31-e842-48e8-adee-4df062d27655" /> 
+<img width="658" height="344" alt="11111" src="https://github.com/user-attachments/assets/519125f5-6f64-4c39-95bd-79791f77507d" />
 
 [![C++20](https://img.shields.io/badge/Language-C%2B%2B20-blue.svg)](https://en.cppreference.com/w/cpp/20)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)](https://www.microsoft.com/windows)
@@ -10,7 +10,6 @@
 Pingwin é um utilitário leve desenvolvido em C++ para monitoramento de rede em tempo real diretamente da bandeja do sistema (System Tray). Ideal para gamers, SOC, NOC, administradores de rede e usuários que precisam de diagnóstico constante de latência sem janelas intrusivas.
 
 ## Funcionalidades
-<img width="216" height="40" alt="image" src="https://github.com/user-attachments/assets/1be98995-2df9-48b9-8986-b23ed3d3e067" />
 
 - **Monitoramento no Tray**: Veja sua latência atual (ms) diretamente no ícone da barra de tarefas.
 - **Cores Dinâmicas**: O ícone muda de cor (Verde, Amarelo, Laranja, Vermelho) baseado em limites de latência customizáveis.
