@@ -10,6 +10,7 @@
 Pingwin é um utilitário leve desenvolvido em C++ para monitoramento de rede em tempo real diretamente da bandeja do sistema (System Tray). Ideal para gamers, SOC, NOC, administradores de rede e usuários que precisam de diagnóstico constante de latência sem janelas intrusivas.
 
 ## Funcionalidades
+<img width="216" height="40" alt="image" src="https://github.com/user-attachments/assets/1be98995-2df9-48b9-8986-b23ed3d3e067" />
 
 - **Monitoramento no Tray**: Veja sua latência atual (ms) diretamente no ícone da barra de tarefas.
 - **Cores Dinâmicas**: O ícone muda de cor (Verde, Amarelo, Laranja, Vermelho) baseado em limites de latência customizáveis.
