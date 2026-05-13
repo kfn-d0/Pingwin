@@ -48,9 +48,9 @@ Certifique-se de ter o g++ (MinGW-w64) instalado e configurado no seu PATH.
 
 2. Compile os recursos e o executável:
 
-   ```bash
+```bash
    windres resource.rc -o resource.o
-   g++ -O3 -std=c++20 -o Pingwin.exe main.cpp gui_manager.cpp network_service.cpp ui_windows.cpp resource.o -lws2_32 -lwinhttp -liphlpapi -lwlanapi -lcomctl32 -lgdi32 -luser32 -lshell32 -mwindows
+   g++ -O3 -std=c++20 -static -static-libgcc -static-libstdc++ -o Pingwin.exe main.cpp gui_manager.cpp network_service.cpp ui_windows.cpp resource.o -lws2_32 -lwinhttp -liphlpapi -lwlanapi -lcomctl32 -lgdi32 -luser32 -lshell32 -mwindows
    ```
 
 ## Configuracao
