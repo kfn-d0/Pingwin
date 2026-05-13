@@ -24,10 +24,42 @@ Pingwin é um utilitário leve desenvolvido em C++ para monitoramento de rede em
 
 ## Cenários de Uso
 
-- **Jogos Online**: Validação de estabilidade de rota para servidores de jogos antes e durante sessões.
-- **Teletrabalho (Home Office)**: Diagnóstico de qualidade em chamadas VoIP e videoconferências via análise de Jitter.
-- **Administração de Sistemas**: Validação rápida de conectividade de serviços e disponibilidade de portas em servidores.
-- **NOC**: Provedores para analise interna de rotas em seu backbone.
+O **Pingwin** é muito mais do que um simples "ping". Pela forma como foi construído (nativo, multithreaded e focado em diagnóstico), ele se encaixa perfeitamente nestes cenários:
+
+### 1. Monitoramento de Jitter (Qualidade de Voz e Vídeo)
+O Jitter (variação da latência) é o maior inimigo de chamadas VoIP (Teams, Zoom, Discord).
+- **Cenário:** Durante uma videoconferência, você percebe falhas no áudio.
+- **Uso:** O Pingwin calcula o Jitter em tempo real no dashboard. Isso permite identificar se o problema é o Wi-Fi instável ou congestionamento na rede, algo que um ping comum não mostra com facilidade.
+
+### 2. Detecção de Instabilidade e Perda de Pacotes (Gaming)
+Para gamers, um ping baixo que "pula" para 300ms (spike) é pior que um ping alto constante.
+- **Cenário:** Você está jogando e sente "lag spikes".
+- **Uso:** As cores dinâmicas no Tray avisam visualmente no exato momento do spike. O histórico gráfico permite ver se as quedas de performance são cíclicas ou aleatórias.
+
+### 3. Observabilidade em Tempo Real (NOC e SOC)
+Profissionais de monitoramento precisam manter o foco em dashboards principais.
+- **Cenário:** Monitorar o gateway principal ou um servidor crítico sem ocupar uma das telas com um terminal preto.
+- **Uso:** O ícone compacto na bandeja permite "observabilidade passiva". Você só olha para ele quando a cor muda de verde para laranja/vermelho, economizando carga cognitiva.
+
+### 4. Diagnóstico de Mudanças de Rota (Backbone e ISP)
+Mudanças súbitas de latência geralmente indicam que o tráfego mudou de rota (peering).
+- **Cenário:** A latência para um servidor internacional subiu de 120ms para 180ms.
+- **Uso:** O **Traceroute Automático** entra em ação. Se o Pingwin detecta alta latência persistente, ele dispara o traceroute para que você tenha o log exato de qual nó da rede (hop) causou o aumento antes que a rota volte ao normal.
+
+### 5. Teste de Portas e Disponibilidade de Serviços
+Às vezes o servidor responde ao ICMP (Ping), mas o serviço (Web, DB, SSH) está fora.
+- **Cenário:** Validar se um firewall liberou o acesso a uma porta específica em um servidor remoto.
+- **Uso:** As ferramentas de **Port Scan** integradas permitem testar rapidamente se portas TCP/UDP estão abertas e respondendo, sem precisar instalar o Nmap ou ferramentas pesadas no cliente.
+
+### 6. Validação de Conectividade em Home Office
+Diagnóstico rápido para usuários não técnicos ou suporte remoto.
+- **Cenário:** Um funcionário reclama que "a internet está lenta".
+- **Uso:** O Pingwin fornece informações de interface (IP, Gateway, DNS, MAC) e estatísticas de sucesso/falha de forma visual. É muito mais fácil pedir para o usuário ler o que está no "dashboard azul" do que rodar comandos no terminal.
+
+### 7. Monitoramento de Múltiplos Alvos (Janelas Flutuantes)
+Útil quando você está migrando um serviço ou acompanhando a estabilidade de vários pontos ao mesmo tempo.
+- **Cenário:** Você está fazendo um deploy e quer monitorar o servidor novo, o antigo e o banco de dados.
+- **Uso:** As janelas flutuantes translúcidas permitem que você "cole" o monitoramento de cada host em um canto da tela enquanto trabalha no código ou no terminal.
 
 ## Tecnologias
 
