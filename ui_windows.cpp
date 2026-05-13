@@ -255,22 +255,37 @@ void Dashboard_Open(HINSTANCE hi) {
 }
 
 struct TempPing { std::string time; int rtt; };
-static std::deque<TempPing> g_floatHistory;
-static std::string g_floatHost;
-static HFONT g_floatFont = 0;
+struct FloatingWindowData {
+    std::deque<TempPing> history;
+    std::string host;
+    std::atomic<bool> pinging{false};
+    HFONT font = 0;
+    int elapsed = 0;
+    std::mutex mtx;
 
-static std::atomic<bool> g_floatPinging{false};
+    FloatingWindowData(const std::string& h) : host(h) {}
+    ~FloatingWindowData() {
+        if (font) DeleteObject(font);
+    }
+};
 
 static LRESULT CALLBACK FloatingWndProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
-    static int elapsed = 0;
-    
+    if (m == WM_NCCREATE) {
+        CREATESTRUCTA* cs = (CREATESTRUCTA*)lp;
+        auto data = new std::shared_ptr<FloatingWindowData>(new FloatingWindowData((const char*)cs->lpCreateParams));
+        SetWindowLongPtr(h, GWLP_USERDATA, (LONG_PTR)data);
+        return TRUE;
+    }
+
+    auto dataPtr = (std::shared_ptr<FloatingWindowData>*)GetWindowLongPtr(h, GWLP_USERDATA);
+    if (!dataPtr) return DefWindowProc(h, m, wp, lp);
+    auto data = *dataPtr;
+
     switch (m) {
         case WM_CREATE:
             SetLayeredWindowAttributes(h, 0, 220, LWA_ALPHA);
             SetTimer(h, 1, 1000, 0);
-            g_floatFont = CreateFontA(14, 0, 0, 0, FW_NORMAL, 0, 0, 0, 0, 0, 0, 0, 0, "Consolas");
-            elapsed = 0; 
-            g_floatHistory.clear();
+            data->font = CreateFontA(14, 0, 0, 0, FW_NORMAL, 0, 0, 0, 0, 0, 0, 0, 0, "Consolas");
             break;
 
         case WM_LBUTTONDOWN:
@@ -279,38 +294,38 @@ static LRESULT CALLBACK FloatingWndProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
 
         case WM_TIMER:
             if (wp == 1) {
-                elapsed++;
-                
-                if (!g_floatPinging.load()) {
-                    g_floatPinging.store(true);
-                    std::thread([](HWND hW) {
+                data->elapsed++;
+                if (!data->pinging.load()) {
+                    data->pinging.store(true);
+                    std::thread([data, hW = h]() {
                         HANDLE hI = IcmpCreateFile();
                         if (hI == INVALID_HANDLE_VALUE) {
-                            g_floatPinging.store(false);
+                            data->pinging.store(false);
                             return;
                         }
 
                         IN_ADDR ia;
-                        if (InetPtonA(AF_INET, g_floatHost.c_str(), &ia) != 1) {
+                        bool ok = false;
+                        if (InetPtonA(AF_INET, data->host.c_str(), &ia) == 1) {
+                            ok = true;
+                        } else {
                             addrinfo ht = {0};
                             ht.ai_family = AF_INET;
                             addrinfo* r = 0;
-                            if (getaddrinfo(g_floatHost.c_str(), 0, &ht, &r) == 0) {
+                            if (getaddrinfo(data->host.c_str(), 0, &ht, &r) == 0) {
                                 ia = ((sockaddr_in*)r->ai_addr)->sin_addr;
                                 freeaddrinfo(r);
-                            } else {
-                                IcmpCloseHandle(hI);
-                                g_floatPinging.store(false);
-                                return;
+                                ok = true;
                             }
                         }
 
-                        char rb[sizeof(ICMP_ECHO_REPLY) + 32];
                         int p = -1;
-                        if (IcmpSendEcho(hI, ia.s_addr, (LPVOID)"ISP", 3, 0, rb, sizeof(rb), 1000)) {
-                            p = ((PICMP_ECHO_REPLY)rb)->RoundTripTime;
+                        if (ok) {
+                            char rb[sizeof(ICMP_ECHO_REPLY) + 32];
+                            if (IcmpSendEcho(hI, ia.s_addr, (LPVOID)"ISP", 3, 0, rb, sizeof(rb), 1000)) {
+                                p = ((PICMP_ECHO_REPLY)rb)->RoundTripTime;
+                            }
                         }
-                        
                         IcmpCloseHandle(hI);
 
                         time_t n = time(0);
@@ -319,15 +334,18 @@ static LRESULT CALLBACK FloatingWndProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
                         char ts[16];
                         strftime(ts, 16, "%H:%M:%S", &l);
                         
-                        g_floatHistory.push_back({ts, p});
-                        if (g_floatHistory.size() > 3) g_floatHistory.pop_front();
+                        {
+                            std::lock_guard<std::mutex> lock(data->mtx);
+                            data->history.push_back({ts, p});
+                            if (data->history.size() > 3) data->history.pop_front();
+                        }
                         
                         InvalidateRect(hW, 0, 0);
-                        g_floatPinging.store(false);
-                    }, h).detach();
+                        data->pinging.store(false);
+                    }).detach();
                 }
 
-                if (g_ctx.autoCloseSeconds > 0 && elapsed >= g_ctx.autoCloseSeconds) {
+                if (g_ctx.autoCloseSeconds > 0 && data->elapsed >= g_ctx.autoCloseSeconds) {
                     DestroyWindow(h);
                 }
             }
@@ -336,36 +354,36 @@ static LRESULT CALLBACK FloatingWndProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
         case WM_PAINT: {
             PAINTSTRUCT ps;
             HDC hdc = BeginPaint(h, &ps);
-            RECT r;
-            GetClientRect(h, &r);
-            
+            RECT r; GetClientRect(h, &r);
             {
                 AppContext::GdiObj<HBRUSH> br(CreateSolidBrush(RGB(10, 10, 10)));
                 FillRect(hdc, &r, br);
             }
-            
             SetTextColor(hdc, RGB(0, 255, 100));
             SetBkMode(hdc, TRANSPARENT);
-            SelectObject(hdc, g_floatFont);
+            SelectObject(hdc, data->font);
             
             int y = 5;
-            for (auto& item : g_floatHistory) {
-                char b[128];
-                if (item.rtt < 0) {
-                    snprintf(b, 128, "[%s] ping: %s - TIMEOUT", item.time.c_str(), g_floatHost.c_str());
-                } else {
-                    snprintf(b, 128, "[%s] ping: %s - %dms", item.time.c_str(), g_floatHost.c_str(), item.rtt);
+            {
+                std::lock_guard<std::mutex> lock(data->mtx);
+                for (auto& item : data->history) {
+                    char b[128];
+                    if (item.rtt < 0) snprintf(b, 128, "[%s] ping: %s - TIMEOUT", item.time.c_str(), data->host.c_str());
+                    else snprintf(b, 128, "[%s] ping: %s - %dms", item.time.c_str(), data->host.c_str(), item.rtt);
+                    TextOutA(hdc, 10, y, b, (int)strlen(b));
+                    y += 18;
                 }
-                TextOutA(hdc, 10, y, b, (int)strlen(b));
-                y += 18;
             }
             EndPaint(h, &ps);
             break;
         }
 
+        case WM_NCDESTROY:
+            delete dataPtr;
+            SetWindowLongPtr(h, GWLP_USERDATA, 0);
+            return DefWindowProc(h, m, wp, lp);
+
         case WM_DESTROY:
-            if (g_floatFont) DeleteObject(g_floatFont);
-            g_floatFont = 0;
             g_ctx.hFloatWnd = 0;
             break;
 
@@ -376,7 +394,6 @@ static LRESULT CALLBACK FloatingWndProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
 }
 
 void FloatingWindow_StartForTarget(const std::string& host) {
-    g_floatHost = host;
     if (g_ctx.hFloatWnd) DestroyWindow(g_ctx.hFloatWnd);
     HINSTANCE hi = GetModuleHandle(0);
     WNDCLASSA wc = {0}; 
@@ -387,7 +404,7 @@ void FloatingWindow_StartForTarget(const std::string& host) {
     wc.hIcon = LoadIcon(hi, MAKEINTRESOURCE(IDI_ICON1));
     RegisterClassA(&wc);
     
-    g_ctx.hFloatWnd = CreateWindowExA(WS_EX_TOPMOST|WS_EX_LAYERED|WS_EX_TOOLWINDOW, "PingWinFloat", "PingWinFloat", WS_POPUP|WS_VISIBLE, 100, 100, 350, 65, 0, 0, hi, 0);
+    g_ctx.hFloatWnd = CreateWindowExA(WS_EX_TOPMOST|WS_EX_LAYERED|WS_EX_TOOLWINDOW, "PingWinFloat", "PingWinFloat", WS_POPUP|WS_VISIBLE, 100, 100, 350, 65, 0, 0, hi, (LPVOID)host.c_str());
 }
 
 static HWND g_hLogEditCtrl = NULL;

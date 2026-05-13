@@ -218,8 +218,9 @@ void BuildContextMenu(HWND h) {
                 AppendMenuA(hmExtScan, MF_GRAYED | MF_STRING, 0, "Buscando portas abertas...");
             } else {
                 for (auto& r : g_ctx.externalScanResults) {
-                    char resLbl[128]; sprintf(resLbl, ":%-5d  %s", r.first, r.second.c_str());
-                    AppendMenuA(hmExtScan, MF_STRING, ID_PORTS_BASE + 40000 + r.first, resLbl);
+                    char resLbl[128];
+                    snprintf(resLbl, 128, "Porta %d: %s", r.first, r.second.c_str());
+                    AppendMenuA(hmExtScan, MF_STRING, ID_PORTS_BASE + 50000 + r.first, resLbl);
                 }
             }
         }
@@ -295,11 +296,14 @@ void BuildContextMenu(HWND h) {
     else if (cmd == ID_PORTS_BASE + 20000) { g_ctx.pingType = 1; OpenInputDialog(0); }
     else if (cmd >= ID_PORTS_BASE + 30000 && cmd < ID_PORTS_BASE + 40000) { g_ctx.pingType = 2; auto t = g_ctx.currentTarget.load(); auto nt = std::make_shared<Target>(*t); nt->port = cmd - (ID_PORTS_BASE + 30000); g_ctx.currentTarget.store(nt); }
     else if (cmd == ID_PORTS_BASE + 40000) { g_ctx.pingType = 2; OpenInputDialog(0); }
-    else if (cmd >= ID_PORTS_BASE + 40000 && cmd < ID_PORTS_BASE + 50000) {
-        int p = cmd - (ID_PORTS_BASE + 40000);
-        auto t = g_ctx.currentTarget.load(); auto nt = std::make_shared<Target>(); 
-        nt->host = g_ctx.externalScanHost; nt->port = p; InetPtonA(AF_INET, g_ctx.externalScanHost.c_str(), &nt->ip);
-        g_ctx.currentTarget.store(nt); g_ctx.pingType = 1;
+    else if (cmd >= ID_PORTS_BASE + 50000 && cmd < ID_PORTS_BASE + 130000) {
+        int p = cmd - (ID_PORTS_BASE + 50000);
+        auto nt = std::make_shared<Target>();
+        nt->host = g_ctx.externalScanHost;
+        nt->port = p;
+        InetPtonA(AF_INET, g_ctx.externalScanHost.c_str(), &nt->ip);
+        g_ctx.currentTarget.store(nt);
+        g_ctx.pingType = 1;
     }
     else if (cmd == ID_ICON_SHOW_LAST) g_ctx.showLastPing = true;
     else if (cmd == ID_ICON_SHOW_AVG) g_ctx.showLastPing = false;
