@@ -1,0 +1,44 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up MSYS2
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        install: >-
+          mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-binutils
+
+    - name: Build Pingwin
+      shell: msys2 {0}
+      run: |
+        windres resource.rc -o resource.o
+        g++ -O3 -std=c++20 -static -static-libgcc -static-libstdc++ -o Pingwin.exe main.cpp gui_manager.cpp network_service.cpp ui_windows.cpp resource.o -lws2_32 -lwinhttp -liphlpapi -lwlanapi -lcomctl32 -lgdi32 -luser32 -lshell32 -mwindows
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Pingwin-Executable
+        path: Pingwin.exe
+
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: Pingwin.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

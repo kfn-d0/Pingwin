@@ -1,0 +1,13 @@
+# Compiled binaries
+*.exe
+*.o
+*.obj
+
+# IDE files
+.vscode/
+.vs/
+*.swp
+*.swo
+
+# GitHub Actions
+# (Keep this if you want to exclude any specific action logs)
