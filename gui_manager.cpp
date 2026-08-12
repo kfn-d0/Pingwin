@@ -43,7 +43,11 @@ public:
         ICONINFO ii = {TRUE, 0, 0, m, b}; HICON hi = CreateIconIndirect(&ii);
         DeleteObject(b); DeleteObject(m); if (hi) cache[k] = hi; return hi;
     }
-    ~IconCache() { for (auto& p : cache) DestroyIcon(p.second); }
+    void Clear() {
+        for (auto& p : cache) DestroyIcon(p.second);
+        cache.clear();
+    }
+    ~IconCache() { Clear(); }
 } iconCache;
 
 static int g_inputType = 0;
@@ -63,9 +67,21 @@ LRESULT CALLBACK InputDlgProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
         if (strlen(buf) > 0) {
             if (g_inputType == 1) g_ctx.alertThreshold = atoi(buf);
             else if (g_inputType == 2) NetworkService_ScanRemotePorts(buf);
-            else if (g_inputType == 3) g_ctx.greenThreshold = atoi(buf);
-            else if (g_inputType == 4) g_ctx.yellowThreshold = atoi(buf);
-            else if (g_inputType == 5) g_ctx.orangeThreshold = atoi(buf);
+            else if (g_inputType == 3) {
+                g_ctx.greenThreshold = atoi(buf);
+                iconCache.Clear();
+                GUIManager_UpdateTray();
+            }
+            else if (g_inputType == 4) {
+                g_ctx.yellowThreshold = atoi(buf);
+                iconCache.Clear();
+                GUIManager_UpdateTray();
+            }
+            else if (g_inputType == 5) {
+                g_ctx.orangeThreshold = atoi(buf);
+                iconCache.Clear();
+                GUIManager_UpdateTray();
+            }
             else NetworkService_ResolveHost(buf);
         }
         DestroyWindow(h);
@@ -101,6 +117,8 @@ LRESULT CALLBACK ThresholdsDlgProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
         GetDlgItemTextA(h, 201, b1, 16); g_ctx.greenThreshold = atoi(b1);
         GetDlgItemTextA(h, 202, b2, 16); g_ctx.yellowThreshold = atoi(b2);
         GetDlgItemTextA(h, 203, b3, 16); g_ctx.orangeThreshold = atoi(b3);
+        iconCache.Clear();
+        GUIManager_UpdateTray();
         DestroyWindow(h);
     } else if (m == WM_CLOSE) DestroyWindow(h);
     return DefWindowProc(h, m, wp, lp);
