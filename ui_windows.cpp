@@ -1,4 +1,5 @@
 #include "ui_windows.h"
+#include <commdlg.h>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -407,45 +408,191 @@ void FloatingWindow_StartForTarget(const std::string& host) {
     g_ctx.hFloatWnd = CreateWindowExA(WS_EX_TOPMOST|WS_EX_LAYERED|WS_EX_TOOLWINDOW, "PingWinFloat", "PingWinFloat", WS_POPUP|WS_VISIBLE, 100, 100, 350, 65, 0, 0, hi, (LPVOID)host.c_str());
 }
 
+#define ID_LOG_CLEAR 9001
+#define ID_LOG_COPY  9002
+#define ID_LOG_EXPORT 9003
+#define ID_LOG_FILTER 9004
+
 static HWND g_hLogEditCtrl = NULL;
+static HWND g_hLogStatusText = NULL;
+static HWND g_hLogBtnClear = NULL;
+static HWND g_hLogBtnCopy = NULL;
+static HWND g_hLogBtnExport = NULL;
+static HWND g_hLogChkFilter = NULL;
+
+static HBRUSH g_hLogBgBrush = NULL;
+static HBRUSH g_hLogEditBrush = NULL;
+static HFONT g_hLogFont = NULL;
+
+static bool g_filterOnlySpikes = false;
+
+static void RefreshLogContent() {
+    if (!g_hLogEditCtrl) return;
+    std::shared_ptr<PingStats> s;
+    {
+        std::lock_guard<std::mutex> lock(g_ctx.statsMtx);
+        auto p = g_ctx.stats.load();
+        if (p) s = std::make_shared<PingStats>(*p);
+    }
+    if (!s) return;
+
+    std::string allLogs = "";
+    size_t count = 0;
+    for (auto& ev : s->eventLog) {
+        if (g_filterOnlySpikes && !ev.isSpike) continue;
+        allLogs += "[" + ev.timestamp + "] " + ev.description + "\r\n";
+        count++;
+    }
+
+    SetWindowTextA(g_hLogEditCtrl, allLogs.c_str());
+    SendMessage(g_hLogEditCtrl, WM_VSCROLL, SB_BOTTOM, 0);
+
+    if (g_hLogStatusText) {
+        char status[128];
+        snprintf(status, sizeof(status), "Total de eventos exibidos: %zu / %zu (Capacidade: %zu)", count, s->eventLog.size(), g_ctx.maxLogCapacity.load());
+        SetWindowTextA(g_hLogStatusText, status);
+    }
+}
 
 static LRESULT CALLBACK LogWindowProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
     switch (m) {
         case WM_CREATE: {
-            g_hLogEditCtrl = CreateWindowExA(0, "EDIT", "", WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL, 0, 0, 0, 0, h, NULL, (HINSTANCE)GetWindowLongPtr(h, GWLP_HINSTANCE), NULL);
-            SendMessage(g_hLogEditCtrl, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), TRUE);
+            g_hLogBgBrush = CreateSolidBrush(RGB(32, 34, 45));
+            g_hLogEditBrush = CreateSolidBrush(RGB(22, 24, 32));
+            g_hLogFont = CreateFontA(14, 0, 0, 0, FW_NORMAL, 0, 0, 0, 0, 0, 0, CLEARTYPE_QUALITY, 0, "Consolas");
+
+            HINSTANCE hi = (HINSTANCE)GetWindowLongPtr(h, GWLP_HINSTANCE);
+
+            g_hLogStatusText = CreateWindowExA(0, "STATIC", "Total de eventos: 0", WS_CHILD | WS_VISIBLE, 15, 12, 350, 22, h, NULL, hi, NULL);
+
+            g_hLogChkFilter = CreateWindowExA(0, "BUTTON", "Apenas Alertas/Spikes", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 370, 10, 200, 22, h, (HMENU)ID_LOG_FILTER, hi, NULL);
+
+            g_hLogEditCtrl = CreateWindowExA(0, "EDIT", "", WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL, 15, 40, 550, 360, h, NULL, hi, NULL);
+            SendMessage(g_hLogEditCtrl, WM_SETFONT, (WPARAM)g_hLogFont, TRUE);
+
+            g_hLogBtnClear = CreateWindowExA(0, "BUTTON", "Limpar", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 15, 410, 100, 30, h, (HMENU)ID_LOG_CLEAR, hi, NULL);
+            g_hLogBtnCopy = CreateWindowExA(0, "BUTTON", "Copiar", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 125, 410, 100, 30, h, (HMENU)ID_LOG_COPY, hi, NULL);
+            g_hLogBtnExport = CreateWindowExA(0, "BUTTON", "Exportar", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 235, 410, 100, 30, h, (HMENU)ID_LOG_EXPORT, hi, NULL);
+
             SetTimer(h, 1, 1000, NULL);
+            RefreshLogContent();
             break;
         }
+
+        case WM_CTLCOLORSTATIC:
+        case WM_CTLCOLOREDIT: {
+            HDC hdc = (HDC)wp;
+            HWND hCtrl = (HWND)lp;
+            if (hCtrl == g_hLogEditCtrl) {
+                SetTextColor(hdc, RGB(0, 220, 130));
+                SetBkColor(hdc, RGB(22, 24, 32));
+                return (INT_PTR)g_hLogEditBrush;
+            }
+            if (hCtrl == g_hLogStatusText || hCtrl == g_hLogChkFilter) {
+                SetTextColor(hdc, RGB(200, 205, 220));
+                SetBkColor(hdc, RGB(32, 34, 45));
+                return (INT_PTR)g_hLogBgBrush;
+            }
+            break;
+        }
+
+        case WM_COMMAND: {
+            int id = LOWORD(wp);
+            if (id == ID_LOG_CLEAR) {
+                {
+                    std::lock_guard<std::mutex> lock(g_ctx.statsMtx);
+                    auto p = g_ctx.stats.load();
+                    if (p) {
+                        auto ns = std::make_shared<PingStats>(*p);
+                        ns->eventLog.clear();
+                        g_ctx.stats.store(ns);
+                    }
+                }
+                RefreshLogContent();
+            } else if (id == ID_LOG_COPY) {
+                int len = GetWindowTextLengthA(g_hLogEditCtrl);
+                if (len > 0) {
+                    std::vector<char> buf(len + 1);
+                    GetWindowTextA(g_hLogEditCtrl, buf.data(), len + 1);
+                    if (OpenClipboard(h)) {
+                        EmptyClipboard();
+                        HGLOBAL hg = GlobalAlloc(GMEM_MOVEABLE, len + 1);
+                        if (hg) {
+                            memcpy(GlobalLock(hg), buf.data(), len + 1);
+                            GlobalUnlock(hg);
+                            SetClipboardData(CF_TEXT, hg);
+                        }
+                        CloseClipboard();
+                    }
+                }
+            } else if (id == ID_LOG_EXPORT) {
+                char filename[MAX_PATH] = "pingwin_events.log";
+                OPENFILENAMEA ofn = {0};
+                ofn.lStructSize = sizeof(ofn);
+                ofn.hwndOwner = h;
+                ofn.lpstrFilter = "Arquivo de Log (*.log;*.txt)\0*.log;*.txt\0Todos os Arquivos (*.*)\0*.*\0";
+                ofn.lpstrFile = filename;
+                ofn.nMaxFile = MAX_PATH;
+                ofn.Flags = OFN_OVERWRITEPROMPT;
+                ofn.lpstrDefExt = "log";
+
+                if (GetSaveFileNameA(&ofn)) {
+                    int len = GetWindowTextLengthA(g_hLogEditCtrl);
+                    if (len >= 0) {
+                        std::vector<char> buf(len + 1);
+                        GetWindowTextA(g_hLogEditCtrl, buf.data(), len + 1);
+                        FILE* f = fopen(filename, "wb");
+                        if (f) {
+                            fwrite(buf.data(), 1, len, f);
+                            fclose(f);
+                        }
+                    }
+                }
+            } else if (id == ID_LOG_FILTER) {
+                g_filterOnlySpikes = (IsDlgButtonChecked(h, ID_LOG_FILTER) == BST_CHECKED);
+                RefreshLogContent();
+            }
+            break;
+        }
+
         case WM_SIZE: {
-            MoveWindow(g_hLogEditCtrl, 0, 0, LOWORD(lp), HIWORD(lp), TRUE);
+            int w = LOWORD(lp);
+            int hH = HIWORD(lp);
+            if (w < 100 || hH < 100) break;
+
+            MoveWindow(g_hLogStatusText, 15, 12, std::max(100, w - 240), 22, TRUE);
+            MoveWindow(g_hLogChkFilter, std::max(200, w - 220), 10, 200, 22, TRUE);
+            MoveWindow(g_hLogEditCtrl, 15, 40, w - 30, hH - 85, TRUE);
+
+            int btnY = hH - 38;
+            MoveWindow(g_hLogBtnClear, 15, btnY, 100, 28, TRUE);
+            MoveWindow(g_hLogBtnCopy, 125, btnY, 100, 28, TRUE);
+            MoveWindow(g_hLogBtnExport, 235, btnY, 100, 28, TRUE);
             break;
         }
+
         case WM_TIMER: {
-            std::shared_ptr<PingStats> s;
-            {
-                std::lock_guard<std::mutex> lock(g_ctx.statsMtx);
-                auto p = g_ctx.stats.load();
-                if (p) s = std::make_shared<PingStats>(*p);
-            }
-            if (s) {
-                std::string allLogs = "";
-                for (auto& ev : s->eventLog) {
-                    allLogs += "[" + ev.timestamp + "] " + ev.description + "\r\n";
-                }
-                static size_t lastSize = 0;
-                if (s->eventLog.size() != lastSize) {
-                    SetWindowTextA(g_hLogEditCtrl, allLogs.c_str());
-                    SendMessage(g_hLogEditCtrl, WM_VSCROLL, SB_BOTTOM, 0);
-                    lastSize = s->eventLog.size();
-                }
-            }
+            RefreshLogContent();
             break;
         }
+
         case WM_CLOSE:
             ShowWindow(h, SW_HIDE);
             return 0;
+
         case WM_DESTROY:
+            if (g_hLogBgBrush) DeleteObject(g_hLogBgBrush);
+            if (g_hLogEditBrush) DeleteObject(g_hLogEditBrush);
+            if (g_hLogFont) DeleteObject(g_hLogFont);
+            g_hLogBgBrush = NULL;
+            g_hLogEditBrush = NULL;
+            g_hLogFont = NULL;
+            g_hLogEditCtrl = NULL;
+            g_hLogStatusText = NULL;
+            g_hLogBtnClear = NULL;
+            g_hLogBtnCopy = NULL;
+            g_hLogBtnExport = NULL;
+            g_hLogChkFilter = NULL;
             g_ctx.hLogWnd = NULL;
             break;
     }
@@ -463,10 +610,10 @@ void LogWindow_Open(HINSTANCE hi) {
     wc.lpfnWndProc = LogWindowProc;
     wc.hInstance = hi;
     wc.lpszClassName = "PingWinLogWindow";
-    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
     wc.hIcon = LoadIcon(hi, MAKEINTRESOURCE(IDI_ICON1));
     RegisterClassA(&wc);
 
-    g_ctx.hLogWnd = CreateWindowExA(WS_EX_TOPMOST, "PingWinLogWindow", "Pingwin - Logs de Eventos", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 500, 400, NULL, NULL, hi, NULL);
+    g_ctx.hLogWnd = CreateWindowExA(WS_EX_TOPMOST, "PingWinLogWindow", "Pingwin - Logs de Eventos", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 600, 480, NULL, NULL, hi, NULL);
     ShowWindow(g_ctx.hLogWnd, SW_SHOW);
 }
