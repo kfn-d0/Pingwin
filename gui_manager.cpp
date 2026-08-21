@@ -302,18 +302,28 @@ void BuildContextMenu(HWND h) {
         if (OpenClipboard(h)) { EmptyClipboard(); HGLOBAL hg = GlobalAlloc(GMEM_MOVEABLE, s.size()+1); if (hg) { memcpy(GlobalLock(hg), s.c_str(), s.size()+1); GlobalUnlock(hg); SetClipboardData(CF_TEXT, hg); } CloseClipboard(); }
     };
 
-    if (cmd == ID_EXIT) PostMessage(h, WM_CLOSE, 0, 0);
-    else if (cmd == ID_INTERVAL_1S) g_ctx.intervalMs = 1000;
-    else if (cmd == ID_INTERVAL_3S) g_ctx.intervalMs = 3000;
-    else if (cmd == ID_INTERVAL_10S) g_ctx.intervalMs = 10000;
+    if (cmd == ID_EXIT) {
+        g_ctx.AddEvent("Aplicacao encerrando...", false);
+        PostMessage(h, WM_CLOSE, 0, 0);
+    }
+    else if (cmd == ID_INTERVAL_1S) { g_ctx.intervalMs = 1000; g_ctx.AddEvent("Intervalo de ping alterado para 1s", false); }
+    else if (cmd == ID_INTERVAL_3S) { g_ctx.intervalMs = 3000; g_ctx.AddEvent("Intervalo de ping alterado para 3s", false); }
+    else if (cmd == ID_INTERVAL_10S) { g_ctx.intervalMs = 10000; g_ctx.AddEvent("Intervalo de ping alterado para 10s", false); }
     else if (cmd == ID_REFRESH_PORTS) CollectNetworkData();
     else if (cmd == ID_SCAN_REMOTE_START) OpenInputDialog(2);
     else if (cmd == ID_OPEN_LOGS) LogWindow_Open(GetModuleHandle(0));
     else if (cmd == ID_VIEW_STATS) Dashboard_Open(GetModuleHandle(0));
-    else if (cmd == ID_PING_TYPE_ICMP) g_ctx.pingType = 0;
-    else if (cmd == ID_PORTS_BASE + 20000) { g_ctx.pingType = 1; OpenInputDialog(0); }
-    else if (cmd >= ID_PORTS_BASE + 30000 && cmd < ID_PORTS_BASE + 40000) { g_ctx.pingType = 2; auto t = g_ctx.currentTarget.load(); auto nt = std::make_shared<Target>(*t); nt->port = cmd - (ID_PORTS_BASE + 30000); g_ctx.currentTarget.store(nt); }
-    else if (cmd == ID_PORTS_BASE + 40000) { g_ctx.pingType = 2; OpenInputDialog(0); }
+    else if (cmd == ID_PING_TYPE_ICMP) { g_ctx.pingType = 0; g_ctx.AddEvent("Tipo de ping alterado para ICMP", false); }
+    else if (cmd == ID_PORTS_BASE + 20000) { g_ctx.pingType = 1; g_ctx.AddEvent("Tipo de ping alterado para TCP", false); OpenInputDialog(0); }
+    else if (cmd >= ID_PORTS_BASE + 30000 && cmd < ID_PORTS_BASE + 40000) {
+        g_ctx.pingType = 2;
+        auto t = g_ctx.currentTarget.load();
+        auto nt = std::make_shared<Target>(*t);
+        nt->port = cmd - (ID_PORTS_BASE + 30000);
+        g_ctx.currentTarget.store(nt);
+        g_ctx.AddEvent("Tipo de ping alterado para UDP (porta " + std::to_string(nt->port) + ")", false);
+    }
+    else if (cmd == ID_PORTS_BASE + 40000) { g_ctx.pingType = 2; g_ctx.AddEvent("Tipo de ping alterado para UDP", false); OpenInputDialog(0); }
     else if (cmd >= ID_PORTS_BASE + 50000 && cmd < ID_PORTS_BASE + 130000) {
         int p = cmd - (ID_PORTS_BASE + 50000);
         auto nt = std::make_shared<Target>();
@@ -322,17 +332,25 @@ void BuildContextMenu(HWND h) {
         InetPtonA(AF_INET, g_ctx.externalScanHost.c_str(), &nt->ip);
         g_ctx.currentTarget.store(nt);
         g_ctx.pingType = 1;
+        g_ctx.AddEvent("Alvo alterado para " + nt->host + ":" + std::to_string(p) + " (TCP)", false);
     }
     else if (cmd == ID_ICON_SHOW_LAST) g_ctx.showLastPing = true;
     else if (cmd == ID_ICON_SHOW_AVG) g_ctx.showLastPing = false;
-    else if (cmd == ID_CLIPBOARD_MONITOR) { g_ctx.monitorClipboard = !g_ctx.monitorClipboard; if (g_ctx.monitorClipboard) AddClipboardFormatListener(h); else RemoveClipboardFormatListener(h); }
+    else if (cmd == ID_CLIPBOARD_MONITOR) {
+        g_ctx.monitorClipboard = !g_ctx.monitorClipboard;
+        if (g_ctx.monitorClipboard) AddClipboardFormatListener(h); else RemoveClipboardFormatListener(h);
+        g_ctx.AddEvent("Monitoramento de area de transferencia: " + std::string(g_ctx.monitorClipboard ? "Ativado" : "Desativado"), false);
+    }
     else if (cmd == ID_COPY_DNS) CopyToClipboard(n->dnsServers);
     else if (cmd == ID_COPY_MAC) CopyToClipboard(n->macAddress);
     else if (cmd == ID_IPV4_GATEWAY) CopyToClipboard(n->ipv4Gateway);
     else if (cmd == ID_IPV4_LOCAL) CopyToClipboard(n->ipv4Local);
     else if (cmd == ID_IPV4_PUBLIC) CopyToClipboard(n->ipv4Public);
     else if (cmd >= ID_PORTS_BASE && cmd < ID_INTERFACE_BASE) CopyToClipboard(std::to_string(cmd - ID_PORTS_BASE));
-    else if (cmd == ID_ALERT_SOUND) g_ctx.soundAlert = !g_ctx.soundAlert;
+    else if (cmd == ID_ALERT_SOUND) {
+        g_ctx.soundAlert = !g_ctx.soundAlert;
+        g_ctx.AddEvent("Alerta sonoro: " + std::string(g_ctx.soundAlert ? "Ativado" : "Desativado"), false);
+    }
     else if (cmd == ID_THRESHOLD_GREEN) {
         WNDCLASSA wc = {0}; 
         if (!GetClassInfoA(GetModuleHandle(0), "PingWinThresholds", &wc)) {

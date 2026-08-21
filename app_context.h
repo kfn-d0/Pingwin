@@ -139,6 +139,7 @@ struct AppContext {
     std::atomic<int> greenThreshold{40};
     std::atomic<int> yellowThreshold{80};
     std::atomic<int> orangeThreshold{100};
+    std::atomic<size_t> maxLogCapacity{1000};
 
     HWND hwndMain = NULL;
     HWND hStatsWnd = NULL;

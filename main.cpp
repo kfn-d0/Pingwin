@@ -13,7 +13,8 @@ void AppContext::AddEvent(const std::string& desc, bool isSpike) {
     time_t n = time(0); tm* lt = localtime(&n);
     char b[16]; strftime(b, 16, "%H:%M:%S", lt);
     ns->eventLog.push_back({b, desc, isSpike});
-    if (ns->eventLog.size() > 200) ns->eventLog.pop_front();
+    size_t limit = maxLogCapacity.load();
+    while (ns->eventLog.size() > limit) ns->eventLog.pop_front();
     stats.store(ns);
 }
 

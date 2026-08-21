@@ -388,7 +388,9 @@ void PingThread() {
                     MessageBeep(MB_ICONWARNING);
                 }
             }
-            ns->lastRtt = p; if (ns->history.size() > 100) ns->history.pop_front(); if (ns->eventLog.size() > 200) ns->eventLog.pop_front();
+            ns->lastRtt = p; if (ns->history.size() > 100) ns->history.pop_front();
+            size_t limit = g_ctx.maxLogCapacity.load();
+            while (ns->eventLog.size() > limit) ns->eventLog.pop_front();
             g_ctx.stats.store(ns);
         }
         auto fr = std::make_shared<PingResult>(); fr->ping = p; fr->host = t->host; fr->port = t->port; g_ctx.latestResult.store(fr);
@@ -434,12 +436,14 @@ void NetworkService_ResolveHost(std::string input) {
         g_ctx.latestResult.store(res);
 
         IN_ADDR addr;
+        bool resolved = false;
         if (InetPtonA(AF_INET, host.c_str(), &addr) == 1) {
             auto nt = std::make_shared<Target>();
             nt->host = host;
             nt->ip = addr;
             nt->port = port;
             g_ctx.currentTarget.store(nt);
+            resolved = true;
         } else {
             addrinfo h = {0};
             h.ai_family = AF_INET;
@@ -451,7 +455,14 @@ void NetworkService_ResolveHost(std::string input) {
                 nt->port = port;
                 g_ctx.currentTarget.store(nt);
                 freeaddrinfo(r);
+                resolved = true;
             }
+        }
+
+        if (resolved) {
+            g_ctx.AddEvent("Alvo alterado para " + host + (port != 80 ? ":" + std::to_string(port) : ""), false);
+        } else {
+            g_ctx.AddEvent("Falha ao resolver host: " + host, true);
         }
         
         g_ctx.resolving = false;
