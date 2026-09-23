@@ -8,17 +8,27 @@ class IconCache {
 public:
     HICON Get(int p) {
         if (!size) size = GetSystemMetrics(SM_CXSMICON);
+
+        // Snapshot thresholds to avoid inconsistent color bands during concurrent updates
+        int thrGreen = g_ctx.greenThreshold.load();
+        int thrYellow = g_ctx.yellowThreshold.load();
+        int thrOrange = g_ctx.orangeThreshold.load();
+
         int k = (p == -2) ? -2 : (p < 0 ? -1 : (p > 999 ? 1000 : p));
         if (cache.count(k)) return cache[k];
-        HDC hS = GetDC(0), hD = CreateCompatibleDC(hS);
-        HBITMAP b = CreateCompatibleBitmap(hS, size, size), bo = (HBITMAP)SelectObject(hD, b);
+
+        HDC hS = GetDC(0);
+        HDC hD = CreateCompatibleDC(hS);
+        HBITMAP b = CreateCompatibleBitmap(hS, size, size);
+        HBITMAP bo = (HBITMAP)SelectObject(hD, b);
+
         COLORREF c;
-        if (p == -2) c = RGB(70, 130, 180); // Azul
-        else if (p < 0) c = RGB(220, 30, 30); // Vermelho (Perda)
-        else if (p <= g_ctx.greenThreshold) c = RGB(30, 180, 30); // Verde (Bom)
-        else if (p <= g_ctx.yellowThreshold) c = RGB(200, 180, 20); // Amarelo (OK)
-        else if (p <= g_ctx.orangeThreshold) c = RGB(220, 120, 20); // Laranja (Ruim)
-        else c = RGB(200, 30, 30); // Vermelho (Critico)
+        if (p == -2) c = RGB(70, 130, 180);          // Azul
+        else if (p < 0) c = RGB(220, 30, 30);         // Vermelho (Perda)
+        else if (p <= thrGreen) c = RGB(30, 180, 30);  // Verde (Bom)
+        else if (p <= thrYellow) c = RGB(200, 180, 20); // Amarelo (OK)
+        else if (p <= thrOrange) c = RGB(220, 120, 20); // Laranja (Ruim)
+        else c = RGB(200, 30, 30);                     // Vermelho (Critico)
 
         HBRUSH br = CreateSolidBrush(c); 
         RECT r = {0, 0, size, size}; 
@@ -104,7 +114,7 @@ LRESULT CALLBACK ThresholdsDlgProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
     } else if (m == WM_PAINT) {
         PAINTSTRUCT ps; HDC hdc = BeginPaint(h, &ps);
         auto DrawBox = [&](int y, COLORREF c) {
-            AppContext::GdiObj<HBRUSH> br(CreateSolidBrush(c));
+            GdiObj<HBRUSH> br(CreateSolidBrush(c));
             RECT r = {200, y, 220, y + 20};
             FillRect(hdc, &r, br);
         };
@@ -176,7 +186,7 @@ void BuildContextMenu(HWND h) {
         {53, "DNS TCP", "Fallback DNS"}, {445, "SMB", "Compartilhamento Windows"}, {8080, "HTTP alt", "APIs/paineis"}, {8443, "HTTPS alt", "Paineis/admin"}
     };
     for (auto& p : tcpList) {
-        char buf[256]; sprintf(buf, ":%-5d  %-16s \t%s", p.port, p.service, p.desc);
+        char buf[256]; snprintf(buf, sizeof(buf), ":%-5d  %-16s \t%s", p.port, p.service, p.desc);
         AppendMenuA(hmTcp, (g_ctx.pingType==1 && curT && curT->port==p.port?MF_CHECKED:0)|MF_STRING, ID_PORTS_BASE + 10000 + p.port, buf);
     }
     AppendMenuA(hmTcp, MF_SEPARATOR, 0, 0);
@@ -190,7 +200,7 @@ void BuildContextMenu(HWND h) {
         {5060, "SIP", "VoIP"}, {33434, "Traceroute", "Linux classico"}
     };
     for (auto& p : udpList) {
-        char buf[256]; sprintf(buf, ":%-5d  %-16s \t%s", p.port, p.service, p.desc);
+        char buf[256]; snprintf(buf, sizeof(buf), ":%-5d  %-16s \t%s", p.port, p.service, p.desc);
         AppendMenuA(hmUdp, (g_ctx.pingType==2 && curT && curT->port==p.port?MF_CHECKED:0)|MF_STRING, ID_PORTS_BASE + 30000 + p.port, buf);
     }
     AppendMenuA(hmUdp, MF_SEPARATOR, 0, 0);
@@ -230,7 +240,7 @@ void BuildContextMenu(HWND h) {
         if (g_ctx.externalScanHost.empty()) {
             AppendMenuA(hmExtScan, MF_GRAYED | MF_STRING, 0, "Nenhum scan ativo");
         } else {
-            char hostLbl[256]; sprintf(hostLbl, "Alvo: %s", g_ctx.externalScanHost.c_str());
+            char hostLbl[256]; snprintf(hostLbl, sizeof(hostLbl), "Alvo: %s", g_ctx.externalScanHost.c_str());
             AppendMenuA(hmExtScan, MF_GRAYED | MF_STRING, 0, hostLbl);
             if (g_ctx.externalScanResults.empty()) {
                 AppendMenuA(hmExtScan, MF_GRAYED | MF_STRING, 0, "Buscando portas abertas...");
@@ -412,12 +422,14 @@ void GUIManager_Init(HINSTANCE hi) {
     wc.hIcon = LoadIcon(hi, MAKEINTRESOURCE(IDI_ICON1));
     
     if (!RegisterClassA(&wc)) {
+        OutputDebugStringA("Pingwin: RegisterClassA failed for PingWinMain\n");
         return;
     }
 
     g_ctx.hwndMain = CreateWindowExA(0, "PingWinMain", "Pingwin", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, hi, 0);
     
     if (!g_ctx.hwndMain) {
+        OutputDebugStringA("Pingwin: CreateWindowExA failed for main window\n");
         return;
     }
 
@@ -445,6 +457,6 @@ void GUIManager_UpdateTray() {
         if (count > 0) p = sum / count;
     }
     g_ctx.nid.hIcon = iconCache.Get(p);
-    char t[128]; sprintf(t, "Ping: %dms - %s:%d", p, r->host.c_str(), r->port);
+    char t[128]; snprintf(t, sizeof(t), "Ping: %dms - %s:%d", p, r->host.c_str(), r->port);
     strncpy(g_ctx.nid.szTip, t, 127); Shell_NotifyIconA(NIM_MODIFY, &g_ctx.nid);
 }

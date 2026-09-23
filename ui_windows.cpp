@@ -13,7 +13,7 @@ static std::string GetUptime() {
     auto now = std::chrono::steady_clock::now();
     auto d = std::chrono::duration_cast<std::chrono::seconds>(now - g_dashboardStartTime).count();
     int h = d / 3600, m = (d % 3600) / 60, s = d % 60;
-    char buf[32]; sprintf(buf, "%02d:%02d:%02d", h, m, s);
+    char buf[32]; snprintf(buf, sizeof(buf), "%02d:%02d:%02d", h, m, s);
     return buf;
 }
 
@@ -42,10 +42,12 @@ static void DrawDashboard(HWND h, HDC hdc) {
     COLORREF textSec = RGB(160, 165, 180);
 
     {
-        AppContext::GdiObj<HBRUSH> hbg(CreateSolidBrush(bg));
+        GdiObj<HBRUSH> hbg(CreateSolidBrush(bg));
         FillRect(mdc, &rc, hbg);
     }
 
+    // Static fonts: created once and reused for the process lifetime.
+    // Windows releases GDI objects on process exit. Not leaked.
     static HFONT fT = CreateFontA(26, 0, 0, 0, FW_BOLD, 0, 0, 0, 0, 0, 0, CLEARTYPE_QUALITY, 0, "Segoe UI");
     static HFONT fS = CreateFontA(14, 0, 0, 0, FW_NORMAL, 0, 0, 0, 0, 0, 0, CLEARTYPE_QUALITY, 0, "Segoe UI");
     static HFONT fC_L = CreateFontA(12, 0, 0, 0, FW_BOLD, 0, 0, 0, 0, 0, 0, CLEARTYPE_QUALITY, 0, "Segoe UI");
@@ -55,12 +57,12 @@ static void DrawDashboard(HWND h, HDC hdc) {
 
     auto Card = [&](int x, int y, int w, int h, const char* label, std::string value, COLORREF accent) {
         {
-            AppContext::GdiObj<HBRUSH> cb(CreateSolidBrush(cardBg));
+            GdiObj<HBRUSH> cb(CreateSolidBrush(cardBg));
             RECT cr = {x, y, x + w, y + h};
             FillRect(mdc, &cr, cb);
         }
         {
-            AppContext::GdiObj<HBRUSH> ab(CreateSolidBrush(accent));
+            GdiObj<HBRUSH> ab(CreateSolidBrush(accent));
             RECT ar = {x, y, x + w, y + 4};
             FillRect(mdc, &ar, ab);
         }
@@ -92,19 +94,19 @@ static void DrawDashboard(HWND h, HDC hdc) {
     Card(25, 25, cw, ch, "TOTAL PINGS", std::to_string(s->totalSent), RGB(0, 180, 255));
     
     char ss[16]; 
-    sprintf(ss, "%.1f%%", success); 
+    snprintf(ss, sizeof(ss), "%.1f%%", success); 
     Card(40 + cw, 25, cw, ch, "TAXA SUCESSO", ss, RGB(0, 220, 100));
     
     char ls[16]; 
-    sprintf(ls, "%.1f%%", loss); 
+    snprintf(ls, sizeof(ls), "%.1f%%", loss); 
     Card(55 + cw * 2, 25, cw, ch, "PERDA PACOTES", ls, RGB(255, 60, 80));
     
     char ds[16]; 
-    sprintf(ds, "%.1fms", stdDev); 
+    snprintf(ds, sizeof(ds), "%.1fms", stdDev); 
     Card(25, 115, cw, ch, "DESVIO PADRAO", ds, RGB(160, 100, 255));
     
     char js[16]; 
-    sprintf(js, "%.1fms", jitter); 
+    snprintf(js, sizeof(js), "%.1fms", jitter); 
     Card(40 + cw, 115, cw, ch, "JITTER", js, RGB(255, 180, 50));
     
     Card(55 + cw * 2, 115, cw, ch, "ULTIMO PING", (s->lastRtt < 0 ? "X" : std::to_string(s->lastRtt) + "ms"), RGB(255, 255, 255));
@@ -112,7 +114,7 @@ static void DrawDashboard(HWND h, HDC hdc) {
     // Grafico
     RECT grr = {25, 235, rc.right - 25, 365};
     {
-        AppContext::GdiObj<HBRUSH> gbb(CreateSolidBrush(RGB(25, 27, 35)));
+        GdiObj<HBRUSH> gbb(CreateSolidBrush(RGB(25, 27, 35)));
         FillRect(mdc, &grr, gbb);
     }
 
@@ -136,8 +138,8 @@ static void DrawDashboard(HWND h, HDC hdc) {
         
         pts.push_back({grr.left + (int)((s->history.size() - 1) * (grr.right - grr.left) / 100), grr.bottom});
         
-        AppContext::GdiObj<HBRUSH> gbru(CreateSolidBrush(RGB(0, 120, 200)));
-        AppContext::GdiObj<HPEN> gpn(CreatePen(PS_SOLID, 2, RGB(0, 180, 255)));
+        GdiObj<HBRUSH> gbru(CreateSolidBrush(RGB(0, 120, 200)));
+        GdiObj<HPEN> gpn(CreatePen(PS_SOLID, 2, RGB(0, 180, 255)));
         
         HBRUSH oldBrush = (HBRUSH)SelectObject(mdc, gbru);
         HPEN oldPen = (HPEN)SelectObject(mdc, gpn);
@@ -146,7 +148,7 @@ static void DrawDashboard(HWND h, HDC hdc) {
         
         for (auto& p : pts) {
             if (p.y < grr.bottom && p.y > grr.top) {
-                AppContext::GdiObj<HBRUSH> wh(CreateSolidBrush(RGB(255, 255, 255)));
+                GdiObj<HBRUSH> wh(CreateSolidBrush(RGB(255, 255, 255)));
                 RECT pr = {p.x - 2, p.y - 2, p.x + 2, p.y + 2};
                 FillRect(mdc, &pr, wh);
             }
@@ -159,8 +161,8 @@ static void DrawDashboard(HWND h, HDC hdc) {
     SelectObject(mdc, fS);
     SetTextColor(mdc, textSec);
     char h1[64], h2[64];
-    sprintf(h1, "Alvo: %s", t->host.c_str());
-    sprintf(h2, "Sessao: %s", GetUptime().c_str());
+    snprintf(h1, sizeof(h1), "Alvo: %s", t->host.c_str());
+    snprintf(h2, sizeof(h2), "Sessao: %s", GetUptime().c_str());
     TextOutA(mdc, 25, 375, h1, (int)strlen(h1));
     
     RECT sesR = {25, 375, rc.right - 25, 395};
@@ -177,14 +179,14 @@ static void DrawDashboard(HWND h, HDC hdc) {
         TextOutA(mdc, 100, y, l, (int)strlen(l));
         
         {
-            AppContext::GdiObj<HBRUSH> fb(CreateSolidBrush(RGB(45, 47, 58)));
+            GdiObj<HBRUSH> fb(CreateSolidBrush(RGB(45, 47, 58)));
             RECT fr = {150, y + 4, rc.right - 100, y + 18};
             FillRect(mdc, &fr, fb);
         }
         
         int bw = (val * (rc.right - 100 - 150) / std::max(1, maxV));
         {
-            AppContext::GdiObj<HBRUSH> bb(CreateSolidBrush(c));
+            GdiObj<HBRUSH> bb(CreateSolidBrush(c));
             RECT brr = {150, y + 4, 150 + bw, y + 18};
             FillRect(mdc, &brr, bb);
         }
@@ -192,7 +194,7 @@ static void DrawDashboard(HWND h, HDC hdc) {
         SetTextColor(mdc, textMain);
         SelectObject(mdc, fC_L);
         char vs[16];
-        sprintf(vs, "%dms", val);
+        snprintf(vs, sizeof(vs), "%dms", val);
         TextOutA(mdc, rc.right - 85, y, vs, (int)strlen(vs));
     };
 
@@ -202,13 +204,13 @@ static void DrawDashboard(HWND h, HDC hdc) {
     Bar(by + 85, "Max", s->maxRtt, maxL, RGB(255, 60, 80));
 
     char ftr[128];
-    sprintf(ftr, "Amostras: %d | Sucesso: %llu | Falhas: %llu", (int)s->history.size(), s->totalSent - s->totalLost, s->totalLost);
+    snprintf(ftr, sizeof(ftr), "Amostras: %d | Sucesso: %llu | Falhas: %llu", (int)s->history.size(), s->totalSent - s->totalLost, s->totalLost);
     SelectObject(mdc, fS);
     SetTextColor(mdc, textSec);
     TextOutA(mdc, 25, rc.bottom - 90, ftr, (int)strlen(ftr));
 
     auto Btn = [&](int x, int y, int w, int h, const char* l, COLORREF c) {
-        AppContext::GdiObj<HBRUSH> b(CreateSolidBrush(c));
+        GdiObj<HBRUSH> b(CreateSolidBrush(c));
         RECT r = {x, y, x + w, y + h};
         FillRect(mdc, &r, b);
         SetTextColor(mdc, textMain);
@@ -284,6 +286,7 @@ static LRESULT CALLBACK FloatingWndProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
 
     switch (m) {
         case WM_CREATE:
+            if (!data) return -1;  // Abort window creation; triggers WM_NCDESTROY for cleanup
             SetLayeredWindowAttributes(h, 0, 220, LWA_ALPHA);
             SetTimer(h, 1, 1000, 0);
             data->font = CreateFontA(14, 0, 0, 0, FW_NORMAL, 0, 0, 0, 0, 0, 0, 0, 0, "Consolas");
@@ -298,7 +301,7 @@ static LRESULT CALLBACK FloatingWndProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
                 data->elapsed++;
                 if (!data->pinging.load()) {
                     data->pinging.store(true);
-                    std::thread([data, hW = h]() {
+                    g_ctx.backgroundTasks.Add(std::thread([data, hW = h]() {
                         HANDLE hI = IcmpCreateFile();
                         if (hI == INVALID_HANDLE_VALUE) {
                             data->pinging.store(false);
@@ -343,7 +346,7 @@ static LRESULT CALLBACK FloatingWndProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
                         
                         InvalidateRect(hW, 0, 0);
                         data->pinging.store(false);
-                    }).detach();
+                    }));
                 }
 
                 if (g_ctx.autoCloseSeconds > 0 && data->elapsed >= g_ctx.autoCloseSeconds) {
@@ -357,7 +360,7 @@ static LRESULT CALLBACK FloatingWndProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
             HDC hdc = BeginPaint(h, &ps);
             RECT r; GetClientRect(h, &r);
             {
-                AppContext::GdiObj<HBRUSH> br(CreateSolidBrush(RGB(10, 10, 10)));
+                GdiObj<HBRUSH> br(CreateSolidBrush(RGB(10, 10, 10)));
                 FillRect(hdc, &r, br);
             }
             SetTextColor(hdc, RGB(0, 255, 100));

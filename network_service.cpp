@@ -157,18 +157,21 @@ void CollectNetworkData() {
         }
     }
 
+    // Capture current public IP while still under lock to avoid racing with the update thread
+    std::string currentPub = g_netState.lastPub;
+
     if (g_netState.pubCounter++ % 150 == 0) {
-        std::thread([](std::string oldIp){ 
+        g_ctx.backgroundTasks.Add(std::thread([](std::string oldIp){
             std::string nPub = FetchPublicIP();
             if (nPub != "N/A" && oldIp != "N/A" && nPub != oldIp) {
                 g_ctx.AddEvent("IP Publico mudou: " + oldIp + " -> " + nPub, true);
                 ShowToast("Pingwin - Mudanca de IP", "Seu IP Publico mudou para: " + nPub);
             }
             std::lock_guard<std::mutex> l(g_netState.mtx);
-            g_netState.lastPub = nPub; 
-        }, g_netState.lastPub).detach();
+            g_netState.lastPub = nPub;
+        }, currentPub));
     }
-    ni->ipv4Public = g_netState.lastPub;
+    ni->ipv4Public = currentPub;
 
     if (!ni->ipv4Local.empty() && !g_netState.lastLocal.empty() && ni->ipv4Local != g_netState.lastLocal) {
         g_ctx.AddEvent("IP Local mudou: " + g_netState.lastLocal + " -> " + ni->ipv4Local, true);
@@ -213,7 +216,7 @@ void CollectNetworkData() {
 }
 
 void NetworkService_ScanRemotePorts(std::string host) {
-    std::thread([host]() {
+    g_ctx.backgroundTasks.Add(std::thread([host]() {
         {
             std::lock_guard<std::mutex> l(g_ctx.scanMtx);
             g_ctx.externalScanHost = host;
@@ -250,12 +253,15 @@ void NetworkService_ScanRemotePorts(std::string host) {
             
             connect(sock, (sockaddr*)&sa, sizeof(sa));
             
-            fd_set writeSet;
+            fd_set writeSet, exceptSet;
             FD_ZERO(&writeSet);
+            FD_ZERO(&exceptSet);
             FD_SET(sock, &writeSet);
+            FD_SET(sock, &exceptSet);
             
             timeval tv = {0, 500000}; // 500ms
-            if (select(0, NULL, &writeSet, NULL, &tv) > 0) {
+            if (select(0, NULL, &writeSet, &exceptSet, &tv) > 0 &&
+                FD_ISSET(sock, &writeSet) && !FD_ISSET(sock, &exceptSet)) {
                 std::lock_guard<std::mutex> l(g_ctx.scanMtx);
                 std::string svc = (p == 80 ? "HTTP" : (p == 443 ? "HTTPS" : (p == 22 ? "SSH" : (p == 3389 ? "RDP" : "Servico"))));
                 g_ctx.externalScanResults.push_back({p, svc});
@@ -266,7 +272,7 @@ void NetworkService_ScanRemotePorts(std::string host) {
             if (!g_ctx.running) break;
         }
         g_ctx.AddEvent("Port Scan concluido para " + host, true);
-    }).detach();
+    }));
 }
 
 void NetworkService_RunTraceroute(std::string host) {
@@ -359,16 +365,29 @@ void PingThread() {
         }
         {
             std::lock_guard<std::mutex> lock(g_ctx.statsMtx);
-            auto s = g_ctx.stats.load(); auto ns = std::make_shared<PingStats>(*s); ns->totalSent++;
-            if (p == -1) { 
-                ns->totalLost++; ns->history.push_back(-1); 
-                if (s->lastRtt != -1) ns->eventLog.push_back({GetTimeStr(), "Timeout!", false}); 
+            auto s = g_ctx.stats.load();
+            auto ns = std::make_shared<PingStats>(*s);
+            ns->totalSent++;
+            if (p == -1) {
+                ns->totalLost++;
+                ns->history.push_back(-1);
+                if (s->lastRtt != -1) {
+                    ns->eventLog.push_back({GetTimeStr(), "Timeout!", false});
+                }
                 g_ctx.highLatencyCount = 0;
             }
             else {
-                ns->sumLatency += p; ns->sumSqLatency += (double)p*p; if (s->lastRtt >= 0) ns->sumJitter += abs(p - s->lastRtt);
-                if (p < ns->minRtt) ns->minRtt = p; if (p > ns->maxRtt) ns->maxRtt = p; ns->history.push_back(p);
-                if (s->lastRtt == -1 && s->totalSent > 0) ns->eventLog.push_back({GetTimeStr(), "Reconectado (" + std::to_string(p) + "ms)", false});
+                ns->sumLatency += p;
+                ns->sumSqLatency += (double)p * p;
+                if (s->lastRtt >= 0) {
+                    ns->sumJitter += abs(p - s->lastRtt);
+                }
+                if (p < ns->minRtt) ns->minRtt = p;
+                if (p > ns->maxRtt) ns->maxRtt = p;
+                ns->history.push_back(p);
+                if (s->lastRtt == -1 && s->totalSent > 0) {
+                    ns->eventLog.push_back({GetTimeStr(), "Reconectado (" + std::to_string(p) + "ms)", false});
+                }
                 if (s->lastRtt > 0 && p > s->lastRtt * 2 && p > 50) {
                     ns->eventLog.push_back({GetTimeStr(), "Latencia dobrou: " + std::to_string(s->lastRtt) + "ms -> " + std::to_string(p) + "ms", true});
                 }
@@ -378,7 +397,7 @@ void PingThread() {
                     if (g_ctx.highLatencyCount >= 30) {
                         g_ctx.highLatencyCount = 0;
                         ns->eventLog.push_back({GetTimeStr(), "Alta latencia persistente detectada (30 pings). Iniciando Traceroute...", true});
-                        std::thread(NetworkService_RunTraceroute, t->host).detach();
+                        g_ctx.backgroundTasks.Add(std::thread(NetworkService_RunTraceroute, t->host));
                     }
                 } else {
                     g_ctx.highLatencyCount = 0;
@@ -388,12 +407,17 @@ void PingThread() {
                     MessageBeep(MB_ICONWARNING);
                 }
             }
-            ns->lastRtt = p; if (ns->history.size() > 100) ns->history.pop_front();
+            ns->lastRtt = p;
+            if (ns->history.size() > 100) ns->history.pop_front();
             size_t limit = g_ctx.maxLogCapacity.load();
             while (ns->eventLog.size() > limit) ns->eventLog.pop_front();
             g_ctx.stats.store(ns);
         }
-        auto fr = std::make_shared<PingResult>(); fr->ping = p; fr->host = t->host; fr->port = t->port; g_ctx.latestResult.store(fr);
+        auto fr = std::make_shared<PingResult>();
+        fr->ping = p;
+        fr->host = t->host;
+        fr->port = t->port;
+        g_ctx.latestResult.store(fr);
         std::unique_lock<std::mutex> l(g_ctx.pingMtx);
         g_ctx.pingCv.wait_for(l, std::chrono::milliseconds(g_ctx.intervalMs), [&]{ return !g_ctx.running.load(); });
     }
@@ -414,11 +438,11 @@ void NetworkService_Stop() {
     g_ctx.running = false;
     g_ctx.pingCv.notify_all();
     g_ctx.netCv.notify_all();
-    
+    g_ctx.backgroundTasks.JoinAll();
 }
 
 void NetworkService_ResolveHost(std::string input) {
-    std::thread([input]() {
+    g_ctx.backgroundTasks.Add(std::thread([input]() {
         g_ctx.resolving = true;
         
         std::string host = input;
@@ -467,5 +491,5 @@ void NetworkService_ResolveHost(std::string input) {
         
         g_ctx.resolving = false;
         g_ctx.pingCv.notify_all();
-    }).detach();
+    }));
 }

@@ -8,10 +8,14 @@ AppContext g_ctx;
 
 void AppContext::AddEvent(const std::string& desc, bool isSpike) {
     std::lock_guard<std::mutex> l(statsMtx);
-    auto s = stats.load(); if (!s) return;
+    auto s = stats.load();
+    if (!s) return;
     auto ns = std::make_shared<PingStats>(*s);
-    time_t n = time(0); tm* lt = localtime(&n);
-    char b[16]; strftime(b, 16, "%H:%M:%S", lt);
+    time_t n = time(0);
+    struct tm lt;
+    localtime_s(&lt, &n);
+    char b[16];
+    strftime(b, 16, "%H:%M:%S", &lt);
     ns->eventLog.push_back({b, desc, isSpike});
     size_t limit = maxLogCapacity.load();
     while (ns->eventLog.size() > limit) ns->eventLog.pop_front();
@@ -40,7 +44,7 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE hp, LPSTR lp, int n) {
         DispatchMessage(&m);
     }
 
-    // limpezaa
+    // limpeza
     NetworkService_Stop();
     GUIManager_Cleanup();
     WSACleanup();

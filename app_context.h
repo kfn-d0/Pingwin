@@ -22,6 +22,7 @@
 #include <deque>
 #include <atomic>
 #include <mutex>
+#include <thread>
 #include <condition_variable>
 #include <memory>
 #include <unordered_map>
@@ -119,6 +120,16 @@ struct PingResult {
     bool isResolving = false;
 };
 
+// RAII wrapper for GDI objects (auto-deletes on destruction)
+template<typename T>
+struct GdiObj {
+    T h;
+    GdiObj(T obj) : h(obj) {}
+    ~GdiObj() { if (h) DeleteObject(h); }
+    operator T() const { return h; }
+    bool operator!() const { return !h; }
+};
+
 struct AppContext {
     std::atomic<std::shared_ptr<Target>> currentTarget;
     std::atomic<std::shared_ptr<PingResult>> latestResult;
@@ -158,14 +169,29 @@ struct AppContext {
     std::string externalScanHost = "";
     std::vector<std::pair<int, std::string>> externalScanResults;
 
-    template<typename T>
-    struct GdiObj {
-        T h;
-        GdiObj(T obj) : h(obj) {}
-        ~GdiObj() { if (h) DeleteObject(h); }
-        operator T() const { return h; }
-        bool operator!() const { return !h; }
-    };
+    // Tracked background threads for graceful shutdown (Issue 6)
+    struct BackgroundTasks {
+        std::mutex mtx;
+        std::vector<std::thread> threads;
+
+        void Add(std::thread&& t) {
+            std::lock_guard<std::mutex> lock(mtx);
+            threads.push_back(std::move(t));
+        }
+
+        void JoinAll() {
+            std::vector<std::thread> local;
+            {
+                std::lock_guard<std::mutex> lock(mtx);
+                std::swap(local, threads);
+            }
+            for (auto& t : local) {
+                if (t.joinable()) t.join();
+            }
+        }
+
+        ~BackgroundTasks() { JoinAll(); }
+    } backgroundTasks;
 
     void AddEvent(const std::string& desc, bool isSpike = false);
 };
